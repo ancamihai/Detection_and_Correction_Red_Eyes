@@ -438,9 +438,17 @@ void rednessDetection(Mat srcImg)
 			unsigned char G = pixel[1];
 			unsigned char R = pixel[2];
 
-			double Redness = max(0.0, (2 * R - (G + B)) / R) * max(0.0, (2 * R - (G + B)) / R);
+			double Redness;
+			if (R > 0)
+			{
+				Redness = max(0.0, (2 * R - (G + B)) / R) * max(0.0, (2 * R - (G + B)) / R);
+			}
+			else
+			{
+				Redness = 0.0;
+			}
 
-			if (Redness > 0.0)
+			if (Redness > 0.99995)
 			{
 				dst.at<uchar>(i, j) = 255;
 			}
@@ -450,7 +458,7 @@ void rednessDetection(Mat srcImg)
 			}
 		}
 	}
-	
+
 	imshow("Redness values", dst);
 	waitKey();
 }
