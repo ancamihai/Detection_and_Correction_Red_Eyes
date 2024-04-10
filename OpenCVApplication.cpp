@@ -424,7 +424,7 @@ void showHistogram(const std::string& name, int* hist, const int  hist_cols, con
 	imshow(name, imgHist);
 }
 
-void rednessDetection(Mat srcImg)
+void rednessDetectionWithPredefinedFunctions(Mat srcImg, float percentage)
 {
 	int height = srcImg.rows;
 	int width = srcImg.cols;
@@ -448,7 +448,7 @@ void rednessDetection(Mat srcImg)
 				Redness = 0.0;
 			}
 
-			if (Redness > 0.99995)
+			if (Redness > 0.999999995)
 			{
 				dst.at<uchar>(i, j) = 255;
 			}
@@ -459,7 +459,37 @@ void rednessDetection(Mat srcImg)
 		}
 	}
 
-	imshow("Redness values", dst);
+	imshow("redness", dst);
+	std::vector<Vec3f> circles;
+	double dp = 1;	
+	double minDist = 20;   // Minimum distance between detected centers
+	double param1 = 50;     // Upper threshold for the internal Canny edge detector
+	double param2 = 10;     // Threshold for center detection
+	float minRadius = dst.rows<200 ? 2.75: dst.rows/(200*percentage);
+	int maxRadius = dst.rows<100 ? dst.rows: dst.rows/(27*percentage);
+
+	HoughCircles(dst, circles, HOUGH_GRADIENT, dp, minDist,
+		param1, param2, minRadius, maxRadius);
+	
+	Point center(dst.cols / 2, dst.rows / 2);
+
+	// Sort circles based on their distance to the center of the image
+	sort(circles.begin(), circles.end(), [&](const Vec3f& a, const Vec3f& b) {
+		float distA = norm(Point(a[0], a[1]) - center);
+		float distB = norm(Point(b[0], b[1]) - center);
+		return distA < distB;
+		});
+
+	std::vector<Vec3f> firstTwoCircles(circles.begin(), circles.begin() + min(2, int(circles.size())));
+
+	Mat result = Mat::zeros(dst.size(), CV_8UC3);
+	for (const auto& circle1 : firstTwoCircles) {
+		Point center(cvRound(circle1[0]), cvRound(circle1[1]));
+		int radius = cvRound(circle1[2]);
+		circle(srcImg, center, radius, Scalar(0, 255, 0), -1);
+	}
+
+	imshow("Red eyes detection", srcImg);
 	waitKey();
 }
 
@@ -494,7 +524,9 @@ void projectCallBackFunc(int event, int x, int y, int flags, void* param)
 
 		imshow("Selected Area", selectedArea);
 
-		rednessDetection(selectedArea);
+		float percentage = (maxX - minX) * (maxY - minY) /(float) ((*(cv::Mat*)param).rows * (*(cv::Mat*)param).cols);
+
+		rednessDetectionWithPredefinedFunctions(selectedArea,percentage);
 
 	}
 }
