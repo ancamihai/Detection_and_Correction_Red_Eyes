@@ -521,7 +521,7 @@ boolean isInside(Mat img, int i, int j)
 	return true;
 }
 
-void rednessDetection(Mat srcImg, float percentage)
+void rednessDetection(Mat srcImg, int imgSize)
 {
 	int height = srcImg.rows;
 	int width = srcImg.cols;
@@ -556,15 +556,10 @@ void rednessDetection(Mat srcImg, float percentage)
 		}
 	}
 
-	imshow("redness", dst);
-
-
-
 	Mat dst_dilation = dst.clone();
 
 	int di[4] = { -1,0,1,0 };
 	int dj[4] = { 0,-1,0,1 };
-
 
 
 	for (int l = 0; l < 2; l++)
@@ -594,8 +589,6 @@ void rednessDetection(Mat srcImg, float percentage)
 		dst_dilation = dst1.clone();
 
 	}
-
-	imshow("dilation applied", dst_dilation);
 
 	Mat dst_borders = dst_dilation.clone();
 
@@ -644,15 +637,37 @@ void rednessDetection(Mat srcImg, float percentage)
 	}
 
 
-	imshow("extracting borders", dst_borders);
-
 	Mat dst_HOUGH = Mat::zeros(height, width, CV_8UC1);
 
-	int minRadius = 5;
-	int maxRadius = 100;
 
+	int minRadius;
+	int maxRadius;
+	int threshold = 140;
+
+	if (imgSize < 50000)
+	{
+		minRadius = 5;
+		maxRadius = 10;
+		threshold = 120;
+	}
+	else if (imgSize < 150000)
+	{
+		minRadius = 6;
+		maxRadius = 10;
+	}
+	else if (imgSize < 250000)
+	{
+		minRadius = 8;
+		maxRadius = 20;
+	}
+	else 
+	{
+		minRadius = 10;
+		maxRadius = 50;
+	}
 
 	std::vector<std::vector<std::vector<std::pair<int, int>>>> accum(height, std::vector<std::vector<std::pair<int, int>>>(width));
+	std::vector<std::vector<int>> consideredPoints;
 
 	for (int i = 0; i < height; i++)
 	{
@@ -713,19 +728,61 @@ void rednessDetection(Mat srcImg, float percentage)
 				}
 			}
 
-			if (pixel > 140) {
-				for (int n = 0; n < 360; ++n) {
-					int a = y0 - r0 * sin(n * CV_PI / 180);
-					int b = x0 - r0 * cos(n * CV_PI / 180);
-					if (isInside(dst_borders,a, b)) {
-						dst_HOUGH.at<uchar>(a, b) = 255;
+			if (pixel >threshold) {
+
+				bool isDistantEnough = true;
+				for (int n = 0; n < consideredPoints.size(); n++)
+				{
+					if ( sqrt( (x0 - consideredPoints[n][0]) * (x0 - consideredPoints[n][0]) + (y0 - consideredPoints[n][1]) * (y0 - consideredPoints[n][1])) <20)
+					{
+						isDistantEnough = false;
 					}
+				}
+
+				if (isDistantEnough == true)
+				{
+					std::vector<int> currentPoint;
+					currentPoint.push_back(x0);
+					currentPoint.push_back(y0);
+					currentPoint.push_back(r0);
+					consideredPoints.push_back(currentPoint);
 				}
 			}
 		}
 	}
 
+
+	Point center(dst.cols / 2, dst.rows / 2);
+
+	sort(consideredPoints.begin(), consideredPoints.end(), [&](const std::vector<int>& a, const std::vector<int>& b) {
+		float distA = norm(Point(a[0], a[1]) - center);
+		float distB = norm(Point(b[0], b[1]) - center);
+		return distA < distB;
+		});
+
+	for (int i = 0; i <=1; i++)
+	{   
+		int x0 = consideredPoints[i][0];
+		int y0 = consideredPoints[i][1];
+		int r0 = consideredPoints[i][2];
+		for (int n = 0; n < 360; ++n) {
+			int a = y0 - r0 * sin(n * CV_PI / 180);
+			int b = x0 - r0 * cos(n * CV_PI / 180);
+			if (isInside(dst_borders, a, b)) {
+				dst_HOUGH.at<uchar>(a, b) = 255;
+			}
+		}
+	}
+
+	imshow("redness", dst);
+
+	imshow("dilation applied", dst_dilation);
+
+	imshow("extracting borders", dst_borders);
+
 	imshow("hough", dst_HOUGH);
+
+	waitKey(0);
 
 }
 
@@ -756,13 +813,19 @@ void projectCallBackFunc(int event, int x, int y, int flags, void* param)
 		int maxX = max(startPoint.x, endPoint.x);
 		int maxY = max(startPoint.y, endPoint.y);
 
-		cv::Mat selectedArea = (*(cv::Mat*)param)(cv::Rect(minX, minY, maxX - minX, maxY - minY)).clone();
+		if (maxX - minX >= 20 && maxY - minY >= 20)
 
-		imshow("Selected Area", selectedArea);
+		{
+			cv::Mat selectedArea = (*(cv::Mat*)param)(cv::Rect(minX, minY, maxX - minX, maxY - minY)).clone();
 
-		float percentage = (maxX - minX) * (maxY - minY) / (float)((*(cv::Mat*)param).rows * (*(cv::Mat*)param).cols);
+			imshow("Selected Area", selectedArea);
 
-		rednessDetection(selectedArea, percentage);
+			float percentage = (maxX - minX) * (maxY - minY) / (float)((*(cv::Mat*)param).rows * (*(cv::Mat*)param).cols);
+
+			rednessDetection(selectedArea, (*(cv::Mat*)param).rows * (*(cv::Mat*)param).cols);
+
+			//rednessDetectionWithPredefinedFunctions(selectedArea, percentage);
+		}
 
 	}
 }
