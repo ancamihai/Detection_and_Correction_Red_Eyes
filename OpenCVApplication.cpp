@@ -745,6 +745,7 @@ void rednessDetection(Mat srcImg, int imgSize)
 					currentPoint.push_back(x0);
 					currentPoint.push_back(y0);
 					currentPoint.push_back(r0);
+					currentPoint.push_back(pixel);
 					consideredPoints.push_back(currentPoint);
 				}
 			}
@@ -760,17 +761,125 @@ void rednessDetection(Mat srcImg, int imgSize)
 		return distA < distB;
 		});
 
-	for (int i = 0; i <=1; i++)
-	{   
-		int x0 = consideredPoints[i][0];
-		int y0 = consideredPoints[i][1];
-		int r0 = consideredPoints[i][2];
-		for (int n = 0; n < 360; ++n) {
-			int a = y0 - r0 * sin(n * CV_PI / 180);
-			int b = x0 - r0 * cos(n * CV_PI / 180);
-			if (isInside(dst_borders, a, b)) {
-				dst_HOUGH.at<uchar>(a, b) = 255;
+	Mat dst_HOUGH_blurred = dst_HOUGH.clone();
+
+	if (consideredPoints.size() >= 2)
+	{
+		for (int i = 0; i <= 1; i++)
+		{   
+			
+			int x0 = consideredPoints[i][0];
+			int y0 = consideredPoints[i][1];
+			int r0 = consideredPoints[i][2];
+
+			for (int y = y0 - r0 - 3; y <= y0 + r0 + 3; ++y) {
+				for (int x = x0 - r0 - 2; x <= x0 + r0 + 2; ++x) {
+					if ((x - x0) * (x - x0) + (y - y0) * (y - y0) <= r0 * r0) {
+						if (isInside(dst_borders, y, x)) {
+							dst_HOUGH.at<uchar>(y, x) = 255;
+						}
+					}
+					else if ((x - x0) * (x - x0) + (y - y0) * (y - y0) <= (r0 + 1) * (r0 + 1) && r0 >= 8)
+					{
+						if (isInside(dst_borders, y, x)) {
+							dst_HOUGH.at<uchar>(y, x) = 255;
+						}
+					}
+					else if ((x - x0) * (x - x0) + (y - y0) * (y - y0) <= (r0 + 2) * (r0 + 2) && r0 >=10)
+					{
+						if (isInside(dst_borders, y, x)) {
+							dst_HOUGH.at<uchar>(y, x) = 255;
+						}
+					}
+				}
 			}
+		}
+
+		int size = 5;
+
+		float standardDeviation = (float)size / 6.0;
+
+		float cst = 1 / (2.0 * standardDeviation * standardDeviation * CV_PI);
+
+		std::vector<float> gaussianKernel;
+
+		for (int i = -(size / 2); i <= size / 2; i++)
+		{
+			for (int j = -(size / 2); j <= size / 2; j++)
+			{
+				float exponent = exp((float)-(((float)i * i + j * j) / (2.0 * standardDeviation * standardDeviation)));
+				float value = cst * exponent;
+				gaussianKernel.push_back(value);
+			}
+		}
+
+		float sum = 0.0f;
+
+		for (int i = 0; i < gaussianKernel.size(); i++)
+		{
+			sum += gaussianKernel[i];
+		}
+
+		int w = sqrt(gaussianKernel.size());
+		int k = (w - 1) / 2;
+
+
+		for (int i = k; i < height - k; i++)
+		{
+			for (int j = k; j < width - k; j++)
+			{   
+				float id = 0;
+				for (int u = 0; u < w; u++)
+				{
+					for (int v = 0; v < w; v++)
+					{
+						id += gaussianKernel[w * u + v] * dst_HOUGH.at<uchar>(i + u - k, j + v - k);
+					}
+				}
+
+				dst_HOUGH_blurred.at<uchar>(i, j) = static_cast<uchar>(id);
+
+			}
+		}
+
+
+	}
+
+	Mat red_correction = srcImg.clone();
+
+	for (int i = 0; i < height; i++)
+	{
+		for (int j = 0; j < width; j++)
+		{
+			if (dst_HOUGH_blurred.at<uchar>(i, j) >0)
+			{
+				Vec3b pixel = srcImg.at< Vec3b>(i, j);
+				unsigned char B = pixel[0];
+				unsigned char G = pixel[1];
+				unsigned char R = pixel[2];
+
+				unsigned char R_new = R - (dst_HOUGH_blurred.at<uchar>(i, j) / 255.0) * (R - min(G, B));
+
+				unsigned char G_new = G;
+
+				if (G > R_new)
+				{
+					G_new = (R_new + B) / 2;
+				}
+
+				unsigned char B_new = B;
+
+				if (B > R_new)
+				{
+					B_new = (R_new + G) / 2;
+				}
+
+				Vec3b newPixel = Vec3b(B_new, G_new, R_new);
+
+				red_correction.at<Vec3b>(i, j) = newPixel;
+
+			}
+			
 		}
 	}
 
@@ -782,10 +891,13 @@ void rednessDetection(Mat srcImg, int imgSize)
 
 	imshow("hough", dst_HOUGH);
 
+	imshow("hough_blurred", dst_HOUGH_blurred);
+
+	imshow("red_correction", red_correction);
+
 	waitKey(0);
 
 }
-
 
 cv::Point startPoint, endPoint;
 bool isDragging = false;
@@ -820,11 +932,9 @@ void projectCallBackFunc(int event, int x, int y, int flags, void* param)
 
 			imshow("Selected Area", selectedArea);
 
-			float percentage = (maxX - minX) * (maxY - minY) / (float)((*(cv::Mat*)param).rows * (*(cv::Mat*)param).cols);
+			//float percentage = (maxX - minX) * (maxY - minY) / (float)((*(cv::Mat*)param).rows * (*(cv::Mat*)param).cols);
 
 			rednessDetection(selectedArea, (*(cv::Mat*)param).rows * (*(cv::Mat*)param).cols);
-
-			//rednessDetectionWithPredefinedFunctions(selectedArea, percentage);
 		}
 
 	}
