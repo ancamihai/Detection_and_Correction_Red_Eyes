@@ -642,7 +642,7 @@ void rednessDetection(Mat srcImg, int imgSize)
 
 	int minRadius;
 	int maxRadius;
-	int threshold = 140;
+	int threshold = 130;
 
 	if (imgSize < 50000)
 	{
@@ -654,6 +654,7 @@ void rednessDetection(Mat srcImg, int imgSize)
 	{
 		minRadius = 6;
 		maxRadius = 10;
+		threshold = 140;
 	}
 	else if (imgSize < 250000)
 	{
@@ -662,7 +663,7 @@ void rednessDetection(Mat srcImg, int imgSize)
 	}
 	else 
 	{
-		minRadius = 10;
+		minRadius = 8;
 		maxRadius = 50;
 	}
 
